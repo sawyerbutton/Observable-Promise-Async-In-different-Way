@@ -209,3 +209,11 @@ export class App {
 })
 export class AppModule {}
 ```
+
+> 这个spa直接运行的结果很直白，会直接展示出`Hello, observable world!`,因为Observable是立刻完成的
+
+> 值得注意的是帮助程序`log()`方法会添加自应用程序加载到每条消息以来的微秒数,这在之后的代码示例中会给更多的提示
+
+> 在observer中有next和complete两个方法分别用来`emit`新的值和将Observable完成,虽然看起来`subscribe`和`then`看起来像是孪生兄弟,但是从本质上来说他们相隔千里
+
+> 说一句题外话，Observable分为有无限和有限的Observables，正如名称所暗示的那样，有限可观察量会返回`一定数量`的结果，而无限可观测量可以`永远持续下去`
