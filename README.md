@@ -279,3 +279,101 @@ this.doAsyncObservableThing.forEach(
 > `forEach()`方法将把Observable转换成Promise，亦即可以使用then标识出Observable完成的时间，当然这只是为了说明而并不是一个开发的方案
 
 #### 链式Observable
+
+> 当开始使用Observable时,最容易困惑的是如何将Observables串联在一起
+
+> 一个很常见的场景是顺序调用多个http请求，并且在请求响应之间需要做一些处理
+
+> 对此的最简单也是最天真的解决方案是简单地在subscribe内部subscribe，就像是回调地狱一样，比如
+
+```typescript
+this.doAsyncObservableThing = new Observable(observer => {
+  setTimeout(() => {
+    observer.next('Hello, observable world!');
+    observer.complete();
+  }, 1000);
+});
+this.doAsyncObservableThing.subscribe((val) => {
+  this.log(val);
+  // 在subscribe的内部继续subscribe
+  this.doAsyncObservableThing.subscribe((val) => {
+    this.log(val);
+  });
+});
+```
+
+> 作为结果
+
+```bash
+1001: Hello, observable world!
+2001: Hello, observable world!  
+```
+
+> 就像promise出现之前的面条回调一样，代码会随着需求嵌套的增多变得越来越难以维护
+
+> 当然可以选择使用`toPromise`的方式将Observable转换成Promise进行优化，但这并不`Observable`
+
+> 事实上，可选的方案根据需求大致存在几种
+
+1. 立即启动所有subscribe任务，逐个获取结果并合并(利用`merge`操作符实现)
+
+```typescript
+import {merge} from 'rxjs/operator'
+this.doAsyncObservableThing('First')
+.merge(this.doAsyncObservableThing('Second'))
+.subscribe((v) => {
+  this.log(v);
+});
+```
+
+```bash
+// 结果为
+1002: First
+1002: Second
+```
+
+> 关键点是`subscribe()`作为回调被调用两次，两次调用同一时刻开始同一时刻结束，first在前，second在后
+
+2. 当Observable是序列实现的时候，使用`async await`
+
+> 通过`toPromise`将Observable转换成Promise后，使用`async await`关键字将异步代码转化为同步的形式撰写
+
+> 使用该方法需要将方法从`constructor()`中转移到`ngOnInit()`,因为构造函数内部不支持异步函数
+
+> async是一个关键字，表示允许方法使用`await`关键字，并且返回一个`promise`
+
+> await关键字暂停async函数的执行，直到`promise被解决或拒绝为止`,await必须始终跟随一个`返回值为promise的表达式`,具体来看
+
+```typescript
+this.log(await this.doAsyncObservableThing('First').toPromise());
+this.log(await this.doAsyncObservableThing('Second').toPromise());
+```
+
+> 使用async await后，对`this.log()`的调用将被暂停，直到计算出涉及await的表达式的promise之后才会继续执行,导致的结果是
+
+```bash
+1005: First
+2009: Second
+```
+
+> 正如我们所期待的那样，第二个Observable将只能在第一个Observable转换成的Promise出结果后才会被执行
+
+#### 关于`route.queryParams`的坑
+
+> 当开发者希望读取当前路由中的查询参数时，必须使用route.queryParams: Observable
+
+> 但是对该Observable使用`toPromise()`方案进行，Observable将会永远卡在这里
+
+> queryParams是一个infinite Observable,订阅它会导致只有在每次查询参数更改时才会调用subscribe，而不是在subscribe时获取当前查询参数
+
+> 这意味着`observer.complete()`将永远不会被其中的内部机制调用，这意味着它对应的Promise将永远不会resolve或reject，await操作符也就失去了作用
+
+> 更多内容涉及到Hot Observable和 Cold Observable
+
+> 如果是应对只希望获取查询参数一次的状况，可以通过导入`take`或`first`运算符变相实现该功能，例如:
+
+```typescript
+import {take} from 'rxjs/opeartor';
+const queryParams = await this.route.queryParamMap.take(1).toPromise();
+// access queryParams as needed
+```
