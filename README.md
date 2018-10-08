@@ -590,7 +590,7 @@ getBookWithDetails(id: number): Observable<any> {
 > 利用`forkJoin`和`flatmap`是处理序列化Observable的推荐方案
 
 
-#### 关于`route.queryParams`的坑
+#### 关于`route.queryParams`的坑(Angular 2.x版本之后不存在)
 
 > 当开发者希望读取当前路由中的查询参数时，必须使用route.queryParams: Observable
 
@@ -609,3 +609,7 @@ import {take} from 'rxjs/opeartor';
 const queryParams = await this.route.queryParamMap.take(1).toPromise();
 // access queryParams as needed
 ```
+
+> 在某个angular版本后，官方修改了route的Observable部分，
+
+> 现在路由器管理它提供的Observable并本地化订阅并在组件被销毁时清理subscriptions以防止内存泄漏，因此不再需要取消订阅路由参数的Observables
