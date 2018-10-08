@@ -587,6 +587,8 @@ getBookWithDetails(id: number): Observable<any> {
 
 > 值得注意的是，我们利用`of`操作符将book对象转换为Observable以实现forkjoin
 
+> 利用`forkJoin`和`flatmap`是处理序列化Observable的推荐方案
+
 
 #### 关于`route.queryParams`的坑
 
