@@ -358,6 +358,236 @@ this.log(await this.doAsyncObservableThing('Second').toPromise());
 
 > 正如我们所期待的那样，第二个Observable将只能在第一个Observable转换成的Promise出结果后才会被执行
 
+3. 使用操作符`flatMap`和`forkJoin`
+
+> 需要明确的是在Angular中，HttpClient的方法返回的是`cold Observable`
+
+> 所谓`cold Observable`指Observable在subscribe时才会开始运行的Observable
+
+> 而所有对于Observable流的操作都必须在`subscribe`方法被调用前之前进行
+
+> 为了循序渐进将会从头开始举例子，下述是一个http service和调用该service的component
+
+```typescript
+@Injectable()
+export class AuthorService {
+
+  constructor(private http: HttpClient){}
+
+  get(id: number): Observable<any> {
+    return this.http.get('/api/authors/' + id)
+  }
+}
+```
+
+```typescript
+@Component({
+  selector: 'app-author',
+  templateUrl: './author.component.html'
+})
+export class AuthorComponent implements OnInit {
+
+  constructor(private authorService: AuthorService) {}
+
+  ngOnInit() {
+    this.authorService.get(1).subscribe((data: any) => {
+      console.log(data);
+    });
+  }
+}
+/* return values:
+{
+  id: 1,
+  first_name: 'sawyer',
+  last_name: 'button'
+}
+*/
+```
+
+> 上述是最基本的http service调用，接下来来一些高级的
+
+> 比如:并行组合Observable
+
+> 假设想要获取作者及其书籍的数据，但为了获取书籍的数量需要调用不同的端点，例如`/authors/1/books`
+
+> 现在希望调用两个端口并将响应组合在一起, 这就需要`forkJoin`操作符(其功能类似于Promise.all());
+
+```typescript
+getAuthorWithBooks(id: number): Observable<any> {
+  return forkJoin([
+    this.http.get('/api/authors/' + id),
+    this.http.get('/api/authors/' + id + '/books')
+  ]).map((data: any[]) => {
+    let author: any = data[0];
+    let books: any[] = data[1];
+    author.books = books;
+    return author;
+  });
+}
+/* return values:
+{
+  id: 1,
+  first_name: 'Daniele',
+  last_name: 'Ghidoli'
+  books: [{
+    id: 10,
+    title: 'Awesome book',
+    author_id: 1
+  }]
+}
+*/
+```
+
+> `forkJoin`返回一个`Array`，其中包含`已连接的Observables`的结果,之后可以在map函数中对其进行操作以满足需要
+
+> 再比如: `将Observables串联组合`
+
+> 在需要从书中获取作者信息的场景下，应该首先得到书籍的数据，在拿到书籍数据中的authorId后再调用author的接口
+
+> 此时需要使用`flatMap`操作符，它类似于通常的`map`操作符，不同之处在于可以链接两个Observable并返回一个新的Observable
+
+```typescript
+getBookAuthor(id: number): Observable<any> {
+  return this.http.get('/api/books/' + id).pipe(
+        flatMap((book: any) => {
+            return this.http.get('/api/authors/' + book.author_id)
+    });
+  )
+}
+
+/* return values:
+{
+  id: 1,
+  first_name: 'Daniele',
+  last_name: 'Ghidoli'
+}
+*/
+```
+
+> 假设需要一并获得书籍和作者的信息时:
+
+```typescript
+getBookAuthor(id: number): Observable<any> {
+  return this.http.get('/api/books/' + id).pipe(
+        flatMap((book: any) => {
+            return this.http.get('/api/authors/' + book.author_id)
+            .map((author: any) => {
+                 book.author = author;
+                return book;
+            })
+    });
+  )
+}
+/* return values:
+{
+  id: 10,
+  title: 'Awesome book',
+  author_id: 1
+  author: {
+    id: 1,
+    first_name: 'Daniele',
+    last_name: 'Ghidoli'
+  }
+}
+*/
+```
+
+> 当情境变得更复杂一些,需要获得许多本书的书籍信息和作者信息时, 需要融合`forkJoin`与`flatMap` 操作符
+
+```typescript
+getBooksWithAuthor(): Observable<any[]> {
+  return this.http.get('/api/books/')
+    .pipe(
+    flatMap((books: any[]) => {
+      if (books.length > 0) {
+        return forkJoin(
+          books.map((book: any) => {
+            return this.http.get('/api/authors/' + book.author_id)
+              .map((author: any) => {
+                book.author = author;
+                return book;
+              });
+          });
+        );
+      } else {
+        return Observable.of([]);
+      }
+    });
+    )
+}
+
+/* return values:
+[{
+  id: 10,
+  title: 'Awesome book',
+  author_id: 1
+  author: {
+    id: 1,
+    first_name: 'Daniele',
+    last_name: 'Ghidoli'
+  }
+},
+{
+  id: 11,
+  title: 'Another awesome book',
+  author_id: 2
+  author: {
+    id: 2,
+    first_name: 'Jeff',
+    last_name: 'Arese'
+  }
+}]
+*/
+```
+
+> 虽然上述代码看起来很复杂，但原理并不难懂:在获取书籍列表之后使用flatMap将之前的调用与forkJoin的结果合并
+
+> 只当书籍不为空时调用，否则我返回一个包含空数组的Observable
+
+> 再举一个例子: 通过一本书获取该书的作者和编辑信息
+
+```typescript
+getBookWithDetails(id: number): Observable<any> {
+  return this.http.get('/api/books/' + id)
+    .pipe(
+        flatMap((book: any) => {
+            return forkJoin(
+            Observable.of(book),
+            this.http.get('/api/authors/' + book.author_id),
+            this.http.get('/api/editors/' + book.editor_id)
+      ).map((data: any[]) => {
+          let book = data[0];
+          let author = data[1];
+          let editor = data[2];
+          book.author = author;
+          book.editor = editor;
+          return book;
+        });
+    });
+    )
+}
+/* return values:
+{
+  id: 10,
+  title: 'Awesome book',
+  author_id: 1,
+  editor_id: 42
+  author: {
+    id: 1,
+    first_name: 'Daniele',
+    last_name: 'Ghidoli'
+  }, 
+  editor: {
+    id: 42,
+    name: 'Universe Editor'
+  }
+}
+*/
+```
+
+> 值得注意的是，我们利用`of`操作符将book对象转换为Observable以实现forkjoin
+
+
 #### 关于`route.queryParams`的坑
 
 > 当开发者希望读取当前路由中的查询参数时，必须使用route.queryParams: Observable
