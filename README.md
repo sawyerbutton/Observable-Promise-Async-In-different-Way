@@ -160,3 +160,52 @@ export class AppComponent {
 > 发送相同内容的搜索实际上在浪费后端服务资源,为了达到理想的期待所要做的就是在调用`debounceTime(400)`后立即调用`distinctUntilChanged()`操作符
 
 > 这样,只有当时间过了400ms并且搜索值变化后后Observable才会抛出一个新的值
+
+#### 用一张图来概括一下
+
+![conclusion of Difference](./assets/Difference.png)
+
+#### 再来一个非Http的Observable例子
+
+```typescript
+//root component
+import {Component, NgModule} from '@angular/core'
+import {BrowserModule} from '@angular/platform-browser'
+import {Observable} from 'rxjs/Observable';
+
+@Component({
+  selector: 'my-app',
+  template: `
+    <div>
+      <h2>Observable Example</h2>
+      <ul>
+        <li *ngFor="let message of messages">{{message}}</li>
+      </ul>
+    </div>
+  `,
+})
+export class App {
+  constructor() {
+    this.initialTime = Date.now();
+    this.messages = [];
+    this.log = (m) => {
+      const dateDifference = Date.now() - this.initialTime;
+      this.messages.push(`${dateDifference}: ${m}`);
+    };
+    this.doAsyncObservableThing = new Observable(observer => {
+      observer.next('Hello, observable world!');
+      observer.complete();
+    });
+    this.doAsyncObservableThing.subscribe(
+      this.log
+    );
+  }
+}
+
+@NgModule({
+  imports: [ BrowserModule ],
+  declarations: [ App ],
+  bootstrap: [ App ]
+})
+export class AppModule {}
+```
